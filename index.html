@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Enterprise TAT</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f5f3;
+      --surface: #ffffff;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --faint: #a8a29e;
+      --line: #e7e5e4;
+      --accent: #1d4ed8;
+      --ok: #15803d;
+      --warn: #b45309;
+      --bad: #b91c1c;
+      --qt1: #15803d;
+      --qt2: #1d4ed8;
+      --qt3: #78716c;
+      --qt4: #b45309;
+      --qt5: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.45 ui-sans-serif, system-ui, sans-serif;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; }
+    h1 { font-size: 24px; font-weight: 600; margin: 0 0 8px; }
+    h2 { font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+    p { margin: 0; }
+    .muted { color: var(--muted); }
+    .faint { color: var(--faint); font-size: 12px; }
+    .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 18px 0; }
+    select, input {
+      height: 32px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 0 10px;
+      font: inherit;
+    }
+    input { width: 220px; }
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      background: var(--surface);
+    }
+    .stats { display: flex; gap: 28px; flex-wrap: wrap; margin: 8px 0 22px; }
+    .stat b { display: block; font-size: 22px; font-weight: 600; }
+    .stat span { color: var(--muted); font-size: 12px; }
+    .stat.warn b { color: var(--warn); }
+    .stat.bad b { color: var(--bad); }
+    .stat.ok b { color: var(--ok); }
+    section { margin: 22px 0; }
+    .chart {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px 8px;
+    }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0 4px; font-size: 12px; color: var(--muted); }
+    .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); font-variant-numeric: tabular-nums; }
+    th, td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--surface); position: sticky; top: 0; }
+    tr.warn td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+    tr.bad td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+    tr.ok td:first-child { box-shadow: inset 3px 0 0 var(--ok); }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; max-height: 420px; }
+    .bars { display: grid; gap: 8px; }
+    .bar-row { display: grid; grid-template-columns: 88px 1fr 36px; gap: 8px; align-items: center; font-size: 12px; }
+    .stack { display: flex; height: 14px; width: 100%; background: #f5f5f4; }
+    .stack i { display: block; height: 100%; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .vbars { display: flex; align-items: flex-end; gap: 10px; height: 160px; }
+    .vbar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+    .vbar b { font-size: 11px; font-weight: 500; }
+    .vbar span { font-size: 11px; color: var(--muted); }
+    .vbar i { display: block; width: 100%; background: var(--accent); }
+    .note {
+      border: 1px solid #bfdbfe;
+      background: #eff6ff;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-top: 8px;
+    }
+    .note strong { display: block; margin-bottom: 4px; }
+    @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Enterprise TAT</h1>
+  <p class="muted">Prod daily snapshot of <code>crm-service:enterprise_priority_details</code>. One row per enterprise. QC buckets QT1–QT5 and editing buckets ET1–ET5 are SKU counts. Configured TAT and the min-TAT fields are hours.</p>
+  <p class="faint" style="margin-top:6px">Source: sample shaped like enterprises_qc_editing_sla_count · 22–24 Nov 2026 · not a live read of the Redis key</p>
+
+  <div class="toolbar">
+    <select id="day"></select>
+    <input id="query" type="search" placeholder="Filter enterprise id" />
+    <span class="pill" id="count"></span>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <section>
+    <h2>QC SKUs in QT4 and QT5</h2>
+    <p class="faint">Share of that day's QC SKUs sitting in the two slowest buckets. Source: sample SLA snapshot · 22–24 Nov 2026.</p>
+    <div class="chart" id="trend"></div>
+  </section>
+
+  <section>
+    <h2>QC bucket mix by enterprise</h2>
+    <p class="faint" id="mix-caption"></p>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--qt1)"></i>QT1</span>
+      <span><i class="swatch" style="background:var(--qt2)"></i>QT2</span>
+      <span><i class="swatch" style="background:var(--qt3)"></i>QT3</span>
+      <span><i class="swatch" style="background:var(--qt4)"></i>QT4</span>
+      <span><i class="swatch" style="background:var(--qt5)"></i>QT5</span>
+    </div>
+    <div class="chart"><div class="bars" id="mix"></div></div>
+  </section>
+
+  <section>
+    <h2 id="table-title"></h2>
+    <p class="faint">Late QC is (QT4 + QT5) / all QC SKUs. A row is marked when that share is 12% or higher, or when QC min TAT exceeds the configured hours.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Enterprise</th><th>TAT (h)</th><th>QC min</th><th>P1 QC min</th>
+            <th>QT1</th><th>QT2</th><th>QT3</th><th>QT4</th><th>QT5</th><th>Late QC</th>
+            <th>Edit min</th><th>ET1</th><th>ET2</th><th>ET3</th><th>ET4</th><th>ET5</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="toolbar">
+      <h2 style="margin:0">One enterprise</h2>
+      <select id="enterprise"></select>
+      <span class="muted" id="one-meta"></span>
+    </div>
+    <div class="cols">
+      <div class="chart" id="qc-bars"></div>
+      <div class="chart" id="edit-bars"></div>
+    </div>
+    <p class="faint" id="one-foot" style="margin-top:8px"></p>
+  </section>
+
+  <div class="note">
+    <strong>What this is reading</strong>
+    The live key and enterprises_qc_editing_sla_count are overwritten by enterprise-priority-cron.js and have no date. This page is the enterprise grain of a daily snapshot of those columns. Wire the date filter to that snapshot before treating the numbers as prod.
+  </div>
+</main>
+<script>
+const DAYS = ["2026-11-22", "2026-11-23", "2026-11-24"];
+const SNAPSHOTS = {
+  "2026-11-22": [
+    { enterpriseId: "ent_1042", enterpriseTat: 12, qt: [40, 22, 8, 3, 1], qMinTat: 2, p1QcMinTat: 1, et: [28, 18, 6, 2, 1], eMinTat: 3, p1EMinTat: 2 },
+    { enterpriseId: "ent_1108", enterpriseTat: 24, qt: [18, 36, 14, 6, 2], qMinTat: 4, p1QcMinTat: 2, et: [22, 30, 12, 5, 2], eMinTat: 6, p1EMinTat: 3 },
+    { enterpriseId: "ent_1184", enterpriseTat: 8, qt: [12, 9, 11, 8, 6], qMinTat: 6, p1QcMinTat: 3, et: [10, 8, 9, 7, 4], eMinTat: 7, p1EMinTat: 4 },
+    { enterpriseId: "ent_1215", enterpriseTat: 48, qt: [30, 44, 16, 4, 1], qMinTat: 5, p1QcMinTat: 2, et: [26, 38, 14, 3, 1], eMinTat: 8, p1EMinTat: 4 },
+    { enterpriseId: "ent_1302", enterpriseTat: 24, qt: [8, 14, 10, 9, 7], qMinTat: 9, p1QcMinTat: 4, et: [11, 16, 9, 6, 3], eMinTat: 10, p1EMinTat: 5 },
+    { enterpriseId: "ent_1410", enterpriseTat: 6, qt: [22, 11, 4, 1, 0], qMinTat: 1, p1QcMinTat: 1, et: [18, 9, 3, 1, 0], eMinTat: 2, p1EMinTat: 1 },
+    { enterpriseId: "ent_1506", enterpriseTat: 36, qt: [15, 28, 19, 7, 3], qMinTat: 5, p1QcMinTat: 3, et: [14, 24, 16, 6, 2], eMinTat: 7, p1EMinTat: 3 },
+    { enterpriseId: "ent_1622", enterpriseTat: 24, qt: [6, 10, 12, 11, 8], qMinTat: 11, p1QcMinTat: 5, et: [9, 12, 10, 8, 5], eMinTat: 12, p1EMinTat: 6 }
+  ],
+  "2026-11-23": [
+    { enterpriseId: "ent_1042", enterpriseTat: 12, qt: [44, 20, 7, 2, 1], qMinTat: 2, p1QcMinTat: 1, et: [31, 16, 5, 2, 0], eMinTat: 3, p1EMinTat: 2 },
+    { enterpriseId: "ent_1108", enterpriseTat: 24, qt: [20, 34, 16, 5, 2], qMinTat: 4, p1QcMinTat: 2, et: [24, 28, 13, 4, 2], eMinTat: 5, p1EMinTat: 3 },
+    { enterpriseId: "ent_1184", enterpriseTat: 8, qt: [10, 8, 12, 10, 7], qMinTat: 7, p1QcMinTat: 3, et: [9, 7, 10, 8, 5], eMinTat: 8, p1EMinTat: 4 },
+    { enterpriseId: "ent_1215", enterpriseTat: 48, qt: [34, 40, 14, 3, 1], qMinTat: 4, p1QcMinTat: 2, et: [29, 36, 12, 3, 1], eMinTat: 7, p1EMinTat: 3 },
+    { enterpriseId: "ent_1302", enterpriseTat: 24, qt: [7, 12, 11, 10, 8], qMinTat: 10, p1QcMinTat: 5, et: [10, 14, 11, 7, 4], eMinTat: 11, p1EMinTat: 5 },
+    { enterpriseId: "ent_1410", enterpriseTat: 6, qt: [26, 10, 3, 1, 0], qMinTat: 1, p1QcMinTat: 1, et: [20, 8, 2, 1, 0], eMinTat: 2, p1EMinTat: 1 },
+    { enterpriseId: "ent_1506", enterpriseTat: 36, qt: [16, 30, 17, 6, 2], qMinTat: 5, p1QcMinTat: 2, et: [15, 26, 14, 5, 2], eMinTat: 6, p1EMinTat: 3 },
+    { enterpriseId: "ent_1622", enterpriseTat: 24, qt: [5, 9, 13, 12, 9], qMinTat: 12, p1QcMinTat: 6, et: [8, 11, 12, 9, 6], eMinTat: 13, p1EMinTat: 6 }
+  ],
+  "2026-11-24": [
+    { enterpriseId: "ent_1042", enterpriseTat: 12, qt: [48, 18, 6, 2, 0], qMinTat: 2, p1QcMinTat: 1, et: [34, 14, 4, 1, 0], eMinTat: 3, p1EMinTat: 1 },
+    { enterpriseId: "ent_1108", enterpriseTat: 24, qt: [16, 38, 18, 7, 3], qMinTat: 4, p1QcMinTat: 2, et: [20, 32, 14, 6, 2], eMinTat: 6, p1EMinTat: 3 },
+    { enterpriseId: "ent_1184", enterpriseTat: 8, qt: [9, 7, 10, 12, 9], qMinTat: 8, p1QcMinTat: 4, et: [8, 6, 9, 10, 6], eMinTat: 9, p1EMinTat: 5 },
+    { enterpriseId: "ent_1215", enterpriseTat: 48, qt: [32, 46, 15, 4, 1], qMinTat: 5, p1QcMinTat: 2, et: [28, 40, 13, 3, 1], eMinTat: 8, p1EMinTat: 4 },
+    { enterpriseId: "ent_1302", enterpriseTat: 24, qt: [6, 11, 12, 11, 9], qMinTat: 11, p1QcMinTat: 5, et: [9, 13, 11, 8, 5], eMinTat: 12, p1EMinTat: 6 },
+    { enterpriseId: "ent_1410", enterpriseTat: 6, qt: [24, 12, 3, 1, 0], qMinTat: 1, p1QcMinTat: 1, et: [19, 10, 2, 0, 0], eMinTat: 2, p1EMinTat: 1 },
+    { enterpriseId: "ent_1506", enterpriseTat: 36, qt: [14, 27, 20, 8, 4], qMinTat: 6, p1QcMinTat: 3, et: [13, 22, 17, 7, 3], eMinTat: 8, p1EMinTat: 4 },
+    { enterpriseId: "ent_1622", enterpriseTat: 24, qt: [4, 8, 11, 14, 11], qMinTat: 13, p1QcMinTat: 6, et: [7, 10, 11, 10, 7], eMinTat: 14, p1EMinTat: 7 }
+  ]
+};
+const COLORS = ["var(--qt1)", "var(--qt2)", "var(--qt3)", "var(--qt4)", "var(--qt5)"];
+const sum = (values) => values.reduce((total, value) => total + value, 0);
+const lateShare = (row) => {
+  const total = sum(row.qt);
+  return total === 0 ? 0 : (row.qt[3] + row.qt[4]) / total;
+};
+const toneFor = (share) => (share >= 0.25 ? "bad" : share >= 0.12 ? "warn" : "ok");
+const pct = (share) => Math.round(share * 100) + "%";
+
+const dayEl = document.getElementById("day");
+const queryEl = document.getElementById("query");
+const enterpriseEl = document.getElementById("enterprise");
+let selectedId = "ent_1184";
+
+DAYS.forEach((day) => {
+  const option = document.createElement("option");
+  option.value = day;
+  option.textContent = day;
+  dayEl.appendChild(option);
+});
+dayEl.value = "2026-11-24";
+
+function render() {
+  const day = dayEl.value;
+  const query = queryEl.value.trim().toLowerCase();
+  const rows = SNAPSHOTS[day].filter((row) => row.enterpriseId.toLowerCase().includes(query));
+  if (!rows.some((row) => row.enterpriseId === selectedId) && rows[0]) selectedId = rows[0].enterpriseId;
+  const selected = rows.find((row) => row.enterpriseId === selectedId);
+
+  const qcTotal = sum(rows.map((row) => sum(row.qt)));
+  const lateTotal = sum(rows.map((row) => row.qt[3] + row.qt[4]));
+  const avgTat = rows.length ? Math.round(sum(rows.map((row) => row.enterpriseTat)) / rows.length) : 0;
+  const overConfig = rows.filter((row) => row.qMinTat > row.enterpriseTat).length;
+  const latePct = qcTotal === 0 ? 0 : lateTotal / qcTotal;
+
+  document.getElementById("count").textContent = rows.length + " enterprises";
+  document.getElementById("stats").innerHTML = [
+    stat(avgTat, "Mean configured TAT (hours) · " + day, ""),
+    stat(qcTotal.toLocaleString(), "QC SKUs in buckets", ""),
+    stat(pct(latePct), "QC SKUs in QT4 + QT5", latePct >= 0.2 ? "bad" : "warn"),
+    stat(overConfig, "Enterprises with QC min TAT over config", overConfig > 0 ? "warn" : "ok")
+  ].join("");
+
+  const lateByDay = DAYS.map((date) => {
+    const dayRows = SNAPSHOTS[date];
+    const total = sum(dayRows.map((row) => sum(row.qt)));
+    const late = sum(dayRows.map((row) => row.qt[3] + row.qt[4]));
+    return total === 0 ? 0 : Math.round((late / total) * 100);
+  });
+  const maxLate = Math.max(...lateByDay, 1);
+  document.getElementById("trend").innerHTML =
+    '<div class="vbars">' +
+    lateByDay.map((value, index) =>
+      '<div class="vbar"><b>' + value + '%</b><i style="height:' + Math.round((value / maxLate) * 120) + 'px;background:var(--warn)"></i><span>' + DAYS[index].slice(5) + '</span></div>'
+    ).join("") +
+    "</div>";
+
+  document.getElementById("mix-caption").textContent = "SKU count on " + day + ". QT1 is the fastest bucket, QT5 the slowest. Sorted by QC volume.";
+  const chartRows = rows.slice().sort((a, b) => sum(b.qt) - sum(a.qt));
+  document.getElementById("mix").innerHTML = chartRows.map((row) => {
+    const total = sum(row.qt) || 1;
+    const parts = row.qt.map((value, index) => '<i style="width:' + (value / total) * 100 + '%;background:' + COLORS[index] + '"></i>').join("");
+    return '<div class="bar-row"><span>' + row.enterpriseId + '</span><div class="stack">' + parts + '</div><span>' + sum(row.qt) + '</span></div>';
+  }).join("");
+
+  document.getElementById("table-title").textContent = "Enterprise SLA on " + day;
+  document.getElementById("rows").innerHTML = rows.map((row) => {
+    const cells = [
+      row.enterpriseId, row.enterpriseTat, row.qMinTat, row.p1QcMinTat,
+      ...row.qt, pct(lateShare(row)), row.eMinTat, ...row.et
+    ];
+    return '<tr class="' + toneFor(lateShare(row)) + '">' + cells.map((cell) => "<td>" + cell + "</td>").join("") + "</tr>";
+  }).join("");
+
+  enterpriseEl.innerHTML = rows.map((row) => '<option value="' + row.enterpriseId + '">' + row.enterpriseId + "</option>").join("");
+  enterpriseEl.value = selected ? selected.enterpriseId : "";
+  if (!selected) {
+    document.getElementById("one-meta").textContent = "";
+    document.getElementById("qc-bars").innerHTML = "";
+    document.getElementById("edit-bars").innerHTML = "";
+    document.getElementById("one-foot").textContent = "";
+    return;
+  }
+  document.getElementById("one-meta").textContent =
+    "Configured TAT " + selected.enterpriseTat + " h · QC min " + selected.qMinTat + " h · editing min " + selected.eMinTat + " h";
+  document.getElementById("qc-bars").innerHTML = columnChart("QC SKUs by bucket", selected.enterpriseId + " · " + day + " · count of SKUs", ["QT1", "QT2", "QT3", "QT4", "QT5"], selected.qt, "var(--accent)");
+  document.getElementById("edit-bars").innerHTML = columnChart("Editing SKUs by bucket", selected.enterpriseId + " · " + day + " · count of SKUs", ["ET1", "ET2", "ET3", "ET4", "ET5"], selected.et, "#57534e");
+  document.getElementById("one-foot").textContent =
+    "P1 QC min TAT " + selected.p1QcMinTat + " h · P1 editing min TAT " + selected.p1EMinTat + " h. Buckets come from getTatSegmentation(enterprise_tat) in crm-service.";
+}
+
+function stat(value, label, tone) {
+  return '<div class="stat ' + tone + '"><b>' + value + '</b><span>' + label + "</span></div>";
+}
+
+function columnChart(title, caption, labels, values, color) {
+  const max = Math.max(...values, 1);
+  const bars = values.map((value, index) =>
+    '<div class="vbar"><b>' + value + '</b><i style="height:' + Math.round((value / max) * 110) + "px;background:" + color + '"></i><span>' + labels[index] + "</span></div>"
+  ).join("");
+  return "<h2>" + title + '</h2><p class="faint">' + caption + '</p><div class="vbars">' + bars + "</div>";
+}
+
+dayEl.addEventListener("change", render);
+queryEl.addEventListener("input", render);
+enterpriseEl.addEventListener("change", () => {
+  selectedId = enterpriseEl.value;
+  render();
+});
+render();
+</script>
+</body>
+</html>
