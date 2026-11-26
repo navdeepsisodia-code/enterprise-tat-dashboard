@@ -18,9 +18,10 @@
   .stats { display:flex; gap:28px; flex-wrap:wrap; margin:14px 0 4px; }
   .stat b { display:block; font-size:22px; }
   .stat span { color:var(--muted); font-size:12px; }
-  .bad b, .bad { color:var(--bad); }
-  .warn b, .warn { color:var(--warn); }
-  .ok b, .ok { color:var(--ok); }
+  .stat.bad b, .num.bad { color:var(--bad); }
+  .stat.warn b, .num.warn, td.warn { color:var(--warn); }
+  .stat.ok b, .num.ok { color:var(--ok); }
+  .num.bad, .num.warn { font-weight:600; }
   .table-wrap { overflow:auto; max-height:680px; border:1px solid var(--line); border-radius:8px; background:#fff; }
   table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
   th, td { padding:8px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
