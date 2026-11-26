@@ -31,16 +31,34 @@
   tr.bad td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
   tr.warn td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
   .sub { display:block; color:var(--muted); font-size:12px; font-weight:400; }
-  .note { margin-top:16px; border:1px solid #fde68a; background:#fffbeb; border-radius:8px; padding:12px 14px; max-width:760px; }
+  .note { margin-top:16px; border:1px solid #fde68a; background:#fffbeb; border-radius:8px; padding:12px 14px; }
   .note strong { display:block; margin-bottom:4px; }
   .empty { padding:28px 10px; color:var(--muted); }
+  .charts { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:14px; margin:18px 0; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px 14px 8px; }
+  .card h2 { font-size:15px; margin:0 0 4px; }
+  .card .cap { color:var(--muted); font-size:12px; margin:0 0 10px; }
+  .bar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 10px; align-items:center; width:100%; margin:0 0 8px; padding:0; border:0; background:transparent; text-align:left; font:inherit; color:inherit; cursor:pointer; }
+  .bar .track { grid-column:1; height:22px; background:#f5f5f4; border-radius:4px; overflow:hidden; }
+  .bar .fill { display:block; height:100%; border-radius:4px; min-width:2px; }
+  .bar .meta { grid-column:1; font-size:12px; color:var(--muted); }
+  .bar b { grid-column:2; grid-row:1 / span 2; font-size:16px; font-variant-numeric:tabular-nums; }
+  .fill.bad { background:#b91c1c; } .fill.warn { background:#d97706; } .fill.ok { background:#15803d; } .fill.muted { background:#a8a29e; } .fill.ink { background:#44403c; }
+  .bar:hover .track { outline:1px solid #d6d3d1; }
+  h2.section { font-size:16px; margin:8px 0 0; }
 </style>
 </head>
 <body>
 <main>
   <h1>Enterprise TAT</h1>
-  <p class="muted">Last saved QC clock for each valid enterprise, read on 26 Nov 2026. This is not a live timer, and it is not the queue on a chosen day.</p>
+  <p class="muted">Each row is the last number the QC cron saved for that enterprise, read on 26 Nov 2026. The number is about one SKU: the oldest one still waiting for QC at that moment.</p>
   <p class="muted" id="fresh" style="margin-top:8px"></p>
+  <div class="charts" id="charts"></div>
+  <div class="note">
+    <strong>133 days does not mean Capital Chevrolet had no QC for 133 days.</strong>
+    <p>On 7 Sep 2026 the cron saved one figure for Capital Chevrolet: the oldest SKU still in the unassigned QC queue was about 134 days old. Against a 3 hour TAT, that is 133 days past TAT. Other cars at the same rooftop can be QC’d on the same day. Checked on 26 Nov 2026, that enterprise has no SKU left in the unassigned QC queue, 9,165 SKUs are marked QC done, and the latest QC time is 25 Nov 2026 at 22:52.</p>
+  </div>
+  <h2 class="section">Every enterprise</h2>
   <div class="stats" id="stats"></div>
   <div class="toolbar">
     <select id="show" aria-label="Which enterprises"></select>
@@ -58,7 +76,7 @@
           <th data-k="region">Region</th>
           <th data-k="segment">Segment</th>
           <th class="num" data-k="tat">Promised TAT</th>
-          <th class="num" data-k="q">QC clock</th>
+          <th class="num" data-k="q">Oldest waiting SKU</th>
           <th class="num" data-k="e">Edit clock</th>
           <th data-k="updated">Last measured</th>
         </tr>
@@ -68,7 +86,7 @@
   </div>
   <div class="note">
     <strong>How to read a row</strong>
-    <p>The QC clock is the promised TAT minus the age of the oldest unassigned QC SKU, saved at the moment in the last column. “3 days overdue” means that SKU was already 3 days past its TAT when the cron last saved the row. “12 h left” means it was still inside the TAT. “No SKU waiting” means a row was saved and there was no unassigned SKU. “Not measured” means this enterprise has no saved row at all. The edit clock is the same idea for editing. The date is that save, not a daily history — a 7 Sep reading is still 7 Sep on this 26 Nov page.</p>
+    <p>“133 days past TAT” means one SKU was still waiting, and it was already 133 days beyond the promised TAT, when the cron last saved the row. It is not the time since the rooftop last did any QC. “12 h still inside TAT” means that oldest waiting SKU was still within its TAT. “No SKU waiting” means a row was saved and the unassigned queue was empty. “Not measured” means there is no saved row. Click a bar to filter the table.</p>
   </div>
 </main>
 <script>
@@ -104,7 +122,7 @@ function clock(mins, savedOn) {
   if (!days && minutes) bits.push(minutes + " min");
   if (!bits.length) bits.push("under 1 min");
   let cls = overdue ? "bad" : (mins < 60 ? "warn" : "ok");
-  return { text: bits.join(" ") + (overdue ? " overdue" : " left"), cls };
+  return { text: bits.join(" ") + (overdue ? " past TAT" : " still inside TAT"), cls };
 }
 function tatLabel(hours) {
   if (hours === null || hours === undefined || hours === "") return "—";
@@ -130,11 +148,19 @@ function tone(r) {
 }
 function matchesShow(r, show) {
   if (show === "overdue") return r.q !== null && r.q < 0;
+  if (show === "under1") return r.q !== null && r.q < 0 && Math.abs(r.q) < 1440;
+  if (show === "past1") return r.q !== null && r.q < 0 && Math.abs(r.q) >= 1440 && Math.abs(r.q) < 7 * 1440;
+  if (show === "past7") return r.q !== null && r.q < 0 && Math.abs(r.q) >= 7 * 1440 && Math.abs(r.q) < 30 * 1440;
+  if (show === "past30") return r.q !== null && r.q < 0 && Math.abs(r.q) >= 30 * 1440 && Math.abs(r.q) < 90 * 1440;
+  if (show === "past90") return r.q !== null && r.q < 0 && Math.abs(r.q) >= 90 * 1440;
   if (show === "inside") return r.q !== null && r.q >= 0;
   if (show === "waiting") return r.q === null && !!r.updated;
   if (show === "never") return !r.updated;
   if (show === "recent") return !!r.updated && daysBefore(r.updated) <= 14;
   if (show === "stale") return !!r.updated && daysBefore(r.updated) > 14;
+  if (show === "sep") return !!r.updated && r.updated.startsWith("2026-09");
+  if (show === "aug") return !!r.updated && r.updated.startsWith("2026-08");
+  if (show === "othermonth") return !!r.updated && (r.updated < "2026-08-01" || (r.updated >= "2026-10-01" && r.updated < "2026-11-12"));
   return true;
 }
 function selected() {
@@ -151,7 +177,7 @@ function render() {
   const never = rows.filter(r => !r.updated).length;
   document.getElementById("stats").innerHTML = [
     stat(rows.length, "Enterprises in view", ""),
-    stat(overdue, "Overdue at last save", overdue ? "bad" : "ok"),
+    stat(overdue, "One SKU past TAT", overdue ? "bad" : "ok"),
     stat(inside, "Still inside TAT", ""),
     stat(waiting, "No QC SKU waiting", ""),
     stat(never, "Never measured", never ? "warn" : "ok")
@@ -195,14 +221,64 @@ function stat(v, label, cls) { return '<div class="stat ' + cls + '"><b>' + v.to
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
 const clocks = ROWS.filter(r => r.q !== null);
 const staleClocks = clocks.filter(r => !r.updated || daysBefore(r.updated) > 14).length;
-document.getElementById("fresh").textContent = (staleClocks === clocks.length ? "All " + clocks.length : staleClocks + " of the " + clocks.length) + " saved QC clocks were written more than 14 days before 26 Nov 2026. An overdue figure is how late the oldest SKU was on that older day, not how late it is today.";
+document.getElementById("fresh").textContent = (staleClocks === clocks.length ? "All " + clocks.length : staleClocks + " of the " + clocks.length) + " saved readings are more than 14 days older than 26 Nov 2026. A large “past TAT” figure is how late that one waiting SKU was on the save date.";
+function countWhere(pred) { return ROWS.filter(pred).length; }
+function chartCard(title, caption, items) {
+  const max = Math.max(...items.map(item => item.count), 1);
+  const rows = items.map(item =>
+    '<button class="bar" type="button" data-show="' + item.show + '">'
+    + '<span class="track"><span class="fill ' + item.cls + '" style="width:' + Math.max(2, Math.round(item.count / max * 100)) + '%"></span></span>'
+    + '<span class="meta">' + escapeHtml(item.label) + "</span>"
+    + "<b>" + item.count.toLocaleString() + "</b>"
+    + "</button>"
+  ).join("");
+  return '<article class="card"><h2>' + escapeHtml(title) + '</h2><p class="cap">' + escapeHtml(caption) + "</p>" + rows + "</article>";
+}
+const past = r => r.q !== null && r.q < 0;
+document.getElementById("charts").innerHTML = [
+  chartCard("What the saved row says", "Most enterprises had nothing waiting. The long delays are 29 rooftops, not the whole list.", [
+    { show: "waiting", cls: "muted", count: countWhere(r => r.q === null && r.updated), label: "No SKU was waiting" },
+    { show: "never", cls: "warn", count: countWhere(r => !r.updated), label: "Never measured" },
+    { show: "inside", cls: "ok", count: countWhere(r => r.q !== null && r.q >= 0), label: "Waiting SKU still inside TAT" },
+    { show: "overdue", cls: "bad", count: countWhere(past), label: "One SKU already past TAT" }
+  ]),
+  chartCard("How late that one SKU was", "Of the 29 past TAT, 13 were under a day. Only Capital Chevrolet and Jerry’s Auto Group were past 90 days, both saved on 7 Sep.", [
+    { show: "under1", cls: "warn", count: countWhere(r => past(r) && Math.abs(r.q) < 1440), label: "Under 1 day past TAT" },
+    { show: "past1", cls: "warn", count: countWhere(r => past(r) && Math.abs(r.q) >= 1440 && Math.abs(r.q) < 7 * 1440), label: "1 to 7 days past TAT" },
+    { show: "past7", cls: "bad", count: countWhere(r => past(r) && Math.abs(r.q) >= 7 * 1440 && Math.abs(r.q) < 30 * 1440), label: "8 to 30 days past TAT" },
+    { show: "past30", cls: "bad", count: countWhere(r => past(r) && Math.abs(r.q) >= 30 * 1440 && Math.abs(r.q) < 90 * 1440), label: "31 to 90 days past TAT" },
+    { show: "past90", cls: "bad", count: countWhere(r => past(r) && Math.abs(r.q) >= 90 * 1440), label: "Over 90 days past TAT" }
+  ]),
+  chartCard("When the number was saved", "August and September hold almost every save. A date here is the last write, not the day QC stopped.", [
+    { show: "sep", cls: "ink", count: countWhere(r => r.updated && r.updated.startsWith("2026-09")), label: "September 2026" },
+    { show: "aug", cls: "ink", count: countWhere(r => r.updated && r.updated.startsWith("2026-08")), label: "August 2026" },
+    { show: "never", cls: "warn", count: countWhere(r => !r.updated), label: "Never saved" },
+    { show: "recent", cls: "ok", count: countWhere(r => r.updated && r.updated >= "2026-11-12"), label: "12–26 Nov 2026" },
+    { show: "othermonth", cls: "muted", count: countWhere(r => r.updated && (r.updated < "2026-08-01" || (r.updated >= "2026-10-01" && r.updated < "2026-11-12"))), label: "Any other month" }
+  ])
+].join("");
+document.getElementById("charts").addEventListener("click", event => {
+  const button = event.target.closest(".bar");
+  if (!button) return;
+  showEl.value = button.dataset.show;
+  render();
+  document.getElementById("rows").closest(".table-wrap").scrollIntoView({ behavior: "smooth", block: "start" });
+});
 showEl.innerHTML = [
   ["", "All enterprises"],
-  ["overdue", "Overdue at last save"],
+  ["overdue", "One SKU past TAT"],
+  ["past90", "Over 90 days past TAT"],
+  ["past30", "31 to 90 days past TAT"],
+  ["past7", "8 to 30 days past TAT"],
+  ["past1", "1 to 7 days past TAT"],
+  ["under1", "Under 1 day past TAT"],
   ["inside", "Still inside TAT"],
   ["waiting", "No QC SKU waiting"],
   ["never", "Never measured"],
   ["recent", "Measured in the last 14 days"],
+  ["sep", "Saved in September 2026"],
+  ["aug", "Saved in August 2026"],
+  ["othermonth", "Saved in another month"],
   ["stale", "Last measured more than 14 days ago"]
 ].map(pair => '<option value="' + pair[0] + '">' + pair[1] + "</option>").join("");
 const regions = [...new Set(ROWS.map(r => r.region))].sort();
